@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Number Picker</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .box {
+      max-width: 500px;
+      margin: auto;
+      background: white;
+      padding: 25px;
+      border-radius: 18px;
+      box-shadow: 0 4px 15px rgba(0,0,0,.12);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    select, button {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    button {
+      background: #111827;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+    }
+
+    .numbers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .number {
+      padding: 20px 5px;
+      font-size: 25px;
+      font-weight: bold;
+      border-radius: 12px;
+      background: #e5e7eb;
+      cursor: pointer;
+    }
+
+    .number.selected {
+      background: #111827;
+      color: white;
+    }
+
+    .number.taken {
+      background: #d1d5db;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    #message {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+
+    #hostPanel {
+      display: none;
+      margin-top: 25px;
+      text-align: left;
+    }
+
+    .person {
+      padding: 12px;
+      margin: 6px 0;
+      background: #f1f5f9;
+      border-radius: 8px;
+    }
+
+    .hostButton {
+      background: #2563eb;
+    }
+
+    .danger {
+      background: #dc2626;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h1>🔢 Number Picker</h1>
+
+  <p>Choose your name, then choose one available number.</p>
+
+  <select id="name">
+    <option value="">-- Select your name --</option>
+    <option>Hellen</option>
+    <option>Aisha</option>
+    <option>Emmanuel</option>
+    <option>Saleh</option>
+    <option>Fadhil</option>
+    <option>Suzan</option>
+  </select>
+
+  <div id="numbers" class="numbers">
+    <div class="number" data-number="1">1</div>
+    <div class="number" data-number="2">2</div>
+    <div class="number" data-number="3">3</div>
+    <div class="number" data-number="4">4</div>
+    <div class="number" data-number="5">5</div>
+    <div class="number" data-number="6">6</div>
+  </div>
+
+  <button id="confirm">Confirm Selection</button>
+
+  <div id="message"></div>
+
+  <hr style="margin:30px 0">
+
+  <button class="hostButton" id="hostLogin">
+    Host Dashboard
+  </button>
+
+  <div id="hostPanel">
+    <h2>👑 Host Dashboard</h2>
+
+    <div id="results"></div>
+
+    <button class="danger" id="reset">
+      Reset All Selections
+    </button>
+  </div>
+
+</div>
+
+
+<script type="module">
+
+  /* ==============================
+     FIREBASE CONFIGURATION
+     ============================== */
+
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+  import {
+    getFirestore,
+    collection,
+    doc,
+    setDoc,
+    getDoc,
+    getDocs,
+    deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  import {
+    getAuth,
+    signInAnonymously,
+    signInWithEmailAndPassword
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+
+  const firebaseConfig = {
+
+    apiKey: "AIzaSyBY95Fhm3--CmCvT5EKWrAZopRGN42Lehk",
+
+    authDomain: "stipend-picker.firebaseapp.com",
+
+    projectId: "stipend-picker",
+
+    storageBucket: "stipend-picker.firebasestorage.app",
+
+    messagingSenderId: "82489349049",
+
+    appId: "1:82489349049:web:1e221bdcca579a48319c68",
+
+    measurementId: "G-Y95ZGQ9ERL"
+  };
+
+
+  const app = initializeApp(firebaseConfig);
+
+  const db = getFirestore(app);
+
+  const auth = getAuth(app);
+
+
+  /* ==============================
+     PARTICIPANTS
+     ============================== */
+
+  const participants = [
+    "Hellen",
+    "Aisha",
+    "Emmanuel",
+    "Saleh",
+    "Fadhil",
+    "Suzan"
+  ];
+
+
+  let selectedNumber = null;
+
+
+  /* ==============================
+     ANONYMOUS LOGIN
+     ============================== */
+
+  async function startApp() {
+
+    try {
+
+      await signInAnonymously(auth);
+
+      console.log("Anonymous login successful");
+
+      loadTakenNumbers();
+
+    } catch (error) {
+
+      console.error(error);
+
+      document.getElementById("message").textContent =
+        "Authentication error. Check Firebase Anonymous Authentication.";
+
+    }
+
+  }
+
+
+  /* ==============================
+     CHECK TAKEN NUMBERS
+     ============================== */
+
+  async function loadTakenNumbers() {
+
+    for (let number = 1; number <= 6; number++) {
+
+      const reference =
+        doc(db, "selections", String(number));
+
+      const snapshot =
+        await getDoc(reference);
+
+      const element =
+        document.querySelector(
+          `.number[data-number="${number}"]`
+        );
+
+      if (snapshot.exists()) {
+
+        element.classList.add("taken");
+
+        element.textContent = "✓";
+
+      }
+
+    }
+
+  }
+
+
+  /* ==============================
+     SELECT NUMBER
+     ============================== */
+
+  document.querySelectorAll(".number").forEach(element => {
+
+    element.addEventListener("click", () => {
+
+      if (element.classList.contains("taken")) {
+
+        return;
+
+      }
+
+      document.querySelectorAll(".number")
+        .forEach(n => n.classList.remove("selected"));
+
+      element.classList.add("selected");
+
+      selectedNumber =
+        element.dataset.number;
+
+    });
+
+  });
+
+
+  /* ==============================
+     CONFIRM SELECTION
+     ============================== */
+
+  document.getElementById("confirm")
+    .addEventListener("click", async () => {
+
+      const name =
+        document.getElementById("name").value;
+
+      const message =
+        document.getElementById("message");
+
+
+      if (!name) {
+
+        message.textContent =
+          "Please select your name.";
+
+        return;
+
+      }
+
+
+      if (!selectedNumber) {
+
+        message.textContent =
+          "Please choose a number.";
+
+        return;
+
+      }
+
+
+      try {
+
+        const numberRef =
+          doc(db, "selections", selectedNumber);
+
+        const existing =
+          await getDoc(numberRef);
+
+
+        if (existing.exists()) {
+
+          message.textContent =
+            "❌ That number has already been taken.";
+
+          document.querySelector(
+            `.number[data-number="${selectedNumber}"]`
+          ).classList.add("taken");
+
+          return;
+
+        }
+
+
+        await setDoc(numberRef, {
+
+          name: name,
+
+          number: Number(selectedNumber),
+
+          uid: auth.currentUser.uid,
+
+          time: new Date().toISOString()
+
+        });
+
+
+        message.textContent =
+          `✅ ${name}, your number is ${selectedNumber}.`;
+
+
+        document.querySelectorAll(".number")
+          .forEach(n => {
+
+            n.classList.remove("selected");
+
+          });
+
+
+        document.querySelector(
+          `.number[data-number="${selectedNumber}"]`
+        ).classList.add("taken");
+
+
+        document.querySelector(
+          `.number[data-number="${selectedNumber}"]`
+        ).textContent = "✓";
+
+
+        selectedNumber = null;
+
+
+      } catch (error) {
+
+        console.error(error);
+
+        message.textContent =
+          "Something went wrong. Please try again.";
+
+      }
+
+    });
+
+
+  /* ==============================
+     HOST LOGIN
+     ============================== */
+
+  document.getElementById("hostLogin")
+    .addEventListener("click", async () => {
+
+      const email =
+        prompt("Enter host email:");
+
+      if (!email) return;
+
+
+      const password =
+        prompt("Enter host password:");
+
+      if (!password) return;
+
+
+      try {
+
+        await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+
+        document.getElementById("hostPanel")
+          .style.display = "block";
+
+
+        await showHostResults();
+
+
+      } catch (error) {
+
+        alert(
+          "Host login failed. Check your email and password."
+        );
+
+      }
+
+    });
+
+
+  /* ==============================
+     HOST RESULTS
+     ============================== */
+
+  async function showHostResults() {
+
+    const results =
+      document.getElementById("results");
+
+    results.innerHTML = "";
+
+
+    const snapshot =
+      await getDocs(
+        collection(db, "selections")
+      );
+
+
+    const selections = {};
+
+    snapshot.forEach(document => {
+
+      selections[document.data().name] =
+        document.data().number;
+
+    });
+
+
+    participants.forEach(name => {
+
+      const div =
+        document.createElement("div");
+
+      div.className = "person";
+
+      div.textContent =
+        `${name}: ${selections[name] || "Not selected"}`;
+
+      results.appendChild(div);
+
+    });
+
+  }
+
+
+  /* ==============================
+     RESET DRAW
+     ============================== */
+
+  document.getElementById("reset")
+    .addEventListener("click", async () => {
+
+      const confirmReset =
+        confirm(
+          "Are you sure you want to reset all six selections?"
+        );
+
+      if (!confirmReset) return;
+
+
+      try {
+
+        for (let number = 1; number <= 6; number++) {
+
+          await deleteDoc(
+            doc(db, "selections", String(number))
+          );
+
+        }
+
+
+        alert("All selections have been reset.");
+
+        location.reload();
+
+
+      } catch (error) {
+
+        console.error(error);
+
+        alert("Reset failed.");
+
+      }
+
+    });
+
+
+  startApp();
+
+</script>
+
+</body>
+</html>
