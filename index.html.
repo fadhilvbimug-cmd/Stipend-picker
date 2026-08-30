@@ -390,43 +390,515 @@ alert("Incorrect host email or password.");
 
 async function showResults() {
 
-const results =
-document.getElementById("results");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stipend Number Picker</title>
 
-results.innerHTML = "";
+<style>
+body{font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:20px}
+.box{max-width:500px;margin:auto;background:white;padding:25px;border-radius:18px;box-shadow:0 4px 15px #0002}
+h1,h2{text-align:center}
+input,button{width:100%;padding:14px;margin-top:12px;border-radius:10px;box-sizing:border-box;font-size:16px}
+input{border:1px solid #ccc}
+button{border:0;background:#111827;color:white}
+.numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.number{padding:22px 5px;text-align:center;font-size:26px;font-weight:bold;background:#e5e7eb;border-radius:12px}
+.number.selected{background:#2563eb;color:white}
+.number.taken{background:#aaa;color:white}
+#message{text-align:center;font-weight:bold;margin-top:18px}
+#hostPanel{display:none;margin-top:30px}
+.result{padding:12px;margin:7px 0;background:#f1f5f9;border-radius:8px}
+.danger{background:#dc2626}
+.hidden{display:none}
+</style>
+</head>
 
-const snap =
-await getDocs(collection(db, "selections"));
+<body>
 
-const data = {};
+<div class="box">
 
-snap.forEach(item => {
+<h1>🔢 Stipend Number Picker</h1>
 
-const x = item.data();
+<div id="login">
 
-data[x.name] = x.number;
+<p>Enter your name and private PIN.</p>
+
+<select id="name">
+<option value="">-- Select your name --</option>
+<option>Hellen</option>
+<option>Aisha</option>
+<option>Emmanuel</option>
+<option>Saleh</option>
+<option>Fadhil</option>
+<option>Suzan</option>
+</select>
+
+<input id="pin" type="password" inputmode="numeric"
+placeholder="Enter your private PIN">
+
+<button id="loginBtn">Continue</button>
+
+</div>
+
+<div id="picker" class="hidden">
+
+<p id="welcome"></p>
+
+<div class="numbers">
+
+<div class="number" data-number="1">1</div>
+<div class="number" data-number="2">2</div>
+<div class="number" data-number="3">3</div>
+<div class="number" data-number="4">4</div>
+<div class="number" data-number="5">5</div>
+<div class="number" data-number="6">6</div>
+
+</div>
+
+<button id="confirm">Confirm My Number</button>
+
+<div id="message"></div>
+
+</div>
+
+<hr style="margin:30px 0">
+
+<button id="hostLogin">👑 Host Dashboard</button>
+
+<div id="hostPanel">
+
+<h2>Host Dashboard</h2>
+
+<div id="results"></div>
+
+<button class="danger" id="reset">
+Reset Entire Draw
+</button>
+
+</div>
+
+</div>
+
+
+<script type="module">
+
+import {initializeApp}
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+getFirestore,
+doc,
+getDoc,
+setDoc,
+collection,
+getDocs,
+writeBatch
+}
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+import {
+getAuth,
+signInAnonymously,
+signInWithEmailAndPassword
+}
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+
+const firebaseConfig={
+
+apiKey:"AIzaSyBY95Fhm3--CmCvT5EKWrAZopRGN42Lehk",
+authDomain:"stipend-picker.firebaseapp.com",
+projectId:"stipend-picker",
+storageBucket:"stipend-picker.firebasestorage.app",
+messagingSenderId:"82489349049",
+appId:"1:82489349049:web:1e221bdcca579a48319c68",
+measurementId:"G-Y95ZGQ9ERL"
+
+};
+
+
+const app=initializeApp(firebaseConfig);
+
+const db=getFirestore(app);
+
+const auth=getAuth(app);
+
+
+/* PARTICIPANTS AND PRIVATE PINS */
+
+const people={
+
+"Hellen":"1842",
+"Aisha":"5271",
+"Emmanuel":"6394",
+"Saleh":"2816",
+"Fadhil":"7453",
+"Suzan":"9168"
+
+};
+
+
+let currentPerson=null;
+
+let selectedNumber=null;
+
+
+/* START */
+
+async function start(){
+
+try{
+
+await signInAnonymously(auth);
+
+await loadNumbers();
+
+}catch(error){
+
+console.error(error);
+
+document.getElementById("message").textContent=
+"Connection error. Please refresh.";
+
+}
+
+}
+
+
+/* LOAD LOCKED NUMBERS */
+
+async function loadNumbers(){
+
+for(let i=1;i<=6;i++){
+
+const ref=doc(db,"numbers",String(i));
+
+const snap=await getDoc(ref);
+
+const button=
+document.querySelector(`[data-number="${i}"]`);
+
+if(snap.exists()){
+
+button.classList.add("taken");
+
+button.textContent="✓";
+
+}
+
+}
+
+}
+
+
+/* LOGIN */
+
+document.getElementById("loginBtn")
+.addEventListener("click",async()=>{
+
+const name=
+document.getElementById("name").value;
+
+const pin=
+document.getElementById("pin").value;
+
+const message=
+document.getElementById("message");
+
+
+if(!name||!pin){
+
+message.textContent=
+"Please enter your name and PIN.";
+
+return;
+
+}
+
+
+if(people[name]!==pin){
+
+message.textContent=
+"❌ Incorrect name or PIN.";
+
+return;
+
+}
+
+
+/* CHECK WHETHER THIS PERSON ALREADY PICKED */
+
+const existing=
+await getDocs(collection(db,"selections"));
+
+let alreadyPicked=false;
+
+existing.forEach(item=>{
+
+if(item.data().name===name){
+
+alreadyPicked=true;
+
+}
 
 });
 
 
-const names = [
-"Hellen",
-"Aisha",
-"Emmanuel",
-"Saleh",
-"Fadhil",
-"Suzan"
-];
+if(alreadyPicked){
+
+document.getElementById("login").classList.add("hidden");
+
+document.getElementById("picker").classList.remove("hidden");
+
+document.getElementById("welcome").textContent=
+`${name}, you have already selected a number.`;
+
+document.getElementById("message").textContent=
+"🔒 Your selection is already locked.";
+
+document.querySelectorAll(".number")
+.forEach(x=>{
+
+x.classList.add("taken");
+
+});
+
+document.getElementById("confirm").disabled=true;
+
+return;
+
+}
 
 
-names.forEach(name => {
+currentPerson=name;
 
-const div = document.createElement("div");
+document.getElementById("login").classList.add("hidden");
 
-div.className = "result";
+document.getElementById("picker").classList.remove("hidden");
 
-div.textContent =
-name + ": " + (data[name] || "Not selected");
+document.getElementById("welcome").textContent=
+`Welcome ${name}. Choose one number.`;
+
+});
+
+
+/* SELECT NUMBER */
+
+document.querySelectorAll(".number")
+.forEach(button=>{
+
+button.addEventListener("click",()=>{
+
+if(button.classList.contains("taken"))return;
+
+document.querySelectorAll(".number")
+.forEach(x=>x.classList.remove("selected"));
+
+button.classList.add("selected");
+
+selectedNumber=
+Number(button.dataset.number);
+
+});
+
+});
+
+
+/* CONFIRM */
+
+document.getElementById("confirm")
+.addEventListener("click",async()=>{
+
+const message=
+document.getElementById("message");
+
+if(!currentPerson){
+
+message.textContent=
+"Please log in first.";
+
+return;
+
+}
+
+if(!selectedNumber){
+
+message.textContent=
+"Please choose a number.";
+
+return;
+
+}
+
+
+try{
+
+/* CHECK PERSON AGAIN */
+
+const selections=
+await getDocs(collection(db,"selections"));
+
+let personAlreadyPicked=false;
+
+selections.forEach(item=>{
+
+if(item.data().name===currentPerson){
+
+personAlreadyPicked=true;
+
+}
+
+});
+
+
+if(personAlreadyPicked){
+
+message.textContent=
+"🔒 You have already selected a number.";
+
+return;
+
+}
+
+
+/* CHECK NUMBER */
+
+const numberRef=
+doc(db,"numbers",String(selectedNumber));
+
+const numberSnap=
+await getDoc(numberRef);
+
+if(numberSnap.exists()){
+
+message.textContent=
+"❌ That number has already been taken.";
+
+await loadNumbers();
+
+return;
+
+}
+
+
+/* SAVE NUMBER */
+
+const batch=writeBatch(db);
+
+batch.set(numberRef,{
+
+taken:true
+
+});
+
+const selectionRef=
+doc(db,"selections",currentPerson);
+
+batch.set(selectionRef,{
+
+name:currentPerson,
+
+number:selectedNumber,
+
+time:new Date().toISOString()
+
+});
+
+await batch.commit();
+
+
+message.textContent=
+`✅ ${currentPerson}, your number is ${selectedNumber}.`;
+
+document.querySelectorAll(".number")
+.forEach(x=>{
+
+x.classList.add("taken");
+
+});
+
+document.getElementById("confirm").disabled=true;
+
+}catch(error){
+
+console.error(error);
+
+message.textContent=
+"❌ Something went wrong. Please try again.";
+
+}
+
+});
+
+
+/* HOST LOGIN */
+
+document.getElementById("hostLogin")
+.addEventListener("click",async()=>{
+
+const email=prompt("Host email:");
+
+if(!email)return;
+
+const password=prompt("Host password:");
+
+if(!password)return;
+
+
+try{
+
+await signInWithEmailAndPassword(
+auth,email,password
+);
+
+document.getElementById("hostPanel")
+.style.display="block";
+
+await showResults();
+
+}catch(error){
+
+alert("Host login failed.");
+
+}
+
+});
+
+
+/* HOST RESULTS */
+
+async function showResults(){
+
+const results=
+document.getElementById("results");
+
+results.innerHTML="";
+
+const snap=
+await getDocs(collection(db,"selections"));
+
+const data={};
+
+snap.forEach(item=>{
+
+const x=item.data();
+
+data[x.name]=x.number;
+
+});
+
+
+Object.keys(people).forEach(name=>{
+
+const div=document.createElement("div");
+
+div.className="result";
+
+div.textContent=
+`${name}: ${data[name]||"Not selected"}`;
 
 results.appendChild(div);
 
@@ -438,33 +910,31 @@ results.appendChild(div);
 /* RESET */
 
 document.getElementById("reset")
-.addEventListener("click", async () => {
+.addEventListener("click",async()=>{
 
-if(!confirm("Reset all selections?")) return;
+if(!confirm("Reset ALL selections?"))return;
 
-try {
+try{
 
-const numbers =
-await getDocs(collection(db, "numbers"));
+const numbers=
+await getDocs(collection(db,"numbers"));
 
-const selections =
-await getDocs(collection(db, "selections"));
+const selections=
+await getDocs(collection(db,"selections"));
 
-const batch = writeBatch(db);
+const batch=writeBatch(db);
 
-numbers.forEach(x => batch.delete(x.ref));
+numbers.forEach(x=>batch.delete(x.ref));
 
-selections.forEach(x => batch.delete(x.ref));
+selections.forEach(x=>batch.delete(x.ref));
 
 await batch.commit();
 
-alert("All selections have been reset.");
+alert("Draw reset successfully.");
 
 location.reload();
 
-} catch(error) {
-
-console.error(error);
+}catch(error){
 
 alert("Reset failed.");
 
